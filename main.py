@@ -1,127 +1,108 @@
 # main.py
 import streamlit as st
 import pandas as pd
+import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
-from data import generate_liver_dataset
 from model import train_models
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc
 
-# -------------------------------
-# Streamlit page config & custom CSS
-# -------------------------------
-st.set_page_config(page_title="Liver Disease Detection", layout="wide")
+# ------------------ Page Config ------------------
+st.set_page_config(
+    page_title="Livera",
+    layout="centered",
+    page_icon="🩺"
+)
 
+# ------------------ Custom Styles ------------------
 st.markdown(
     """
     <style>
-    /* Background color */
-    .stApp {
-        background-color: #f0f8ff;  /* light blue */
-        font-family: 'Segoe UI', sans-serif;
+    .main {
+        background-color: #f0f4f8;
+        font-family: 'Arial', sans-serif;
+        color: #1f2937;
     }
-    /* Headers */
-    h1, h2, h3, h4, h5, h6 {
-        color: #0b3d91;
-        font-family: 'Segoe UI', sans-serif;
-    }
-    /* Sidebar */
-    .css-1d391kg {
-        background-color: #e6f2ff;
-    }
-    /* Buttons */
-    div.stButton > button:first-child {
-        background-color: #0b3d91;
+    .stButton>button {
+        background-color: #4caf50;
         color: white;
-        font-weight: bold;
+        font-size: 18px;
+    }
+    .stSidebar .sidebar-content {
+        background-color: #e2e8f0;
     }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# -------------------------------
-# Title
-# -------------------------------
-st.markdown("## 🩺 Liver Disease Detection")
+# ------------------ Title ------------------
+st.title("🩺 Livera")
+st.markdown("#### Predict potential liver disease risk with interactive AI")
 
-# -------------------------------
-# Load dataset
-# -------------------------------
-df = generate_liver_dataset()
-X = df.drop('target', axis=1)
-y = df['target']
+# ------------------ Load Models ------------------
+rf_model, gb_model = train_models()
 
-# -------------------------------
-# Train models
-# -------------------------------
-rf_model, gb_model, X_train, X_test, y_train, y_test, _, _ = train_models(X, y)
+# ------------------ Sidebar Input ------------------
+st.sidebar.header("Enter Patient Data")
+def user_input():
+    Age = st.sidebar.slider("Age", 20, 80, 40)
+    Bilirubin = st.sidebar.slider("Bilirubin", 0.3, 3.0, 1.0)
+    AlkPhos = st.sidebar.slider("Alkaline Phosphatase", 150, 400, 200)
+    SGPT = st.sidebar.slider("SGPT (ALT)", 10, 100, 30)
+    Albumin = st.sidebar.slider("Albumin", 2.5, 5.0, 4.0)
+    A_G_Ratio = st.sidebar.slider("Albumin/Globulin Ratio", 0.8, 2.5, 1.2)
+    Total_Proteins = st.sidebar.slider("Total Proteins", 5.0, 8.0, 6.5)
+    Age_Bilirubin_Ratio = Age / Bilirubin
+    return pd.DataFrame({
+        "Age":[Age],
+        "Bilirubin":[Bilirubin],
+        "Alkaline_Phosphotase":[AlkPhos],
+        "SGPT_Alanine_Aminotransferase":[SGPT],
+        "Albumin":[Albumin],
+        "Albumin_and_Globulin_Ratio":[A_G_Ratio],
+        "Total_Proteins":[Total_Proteins],
+        "Age_Bilirubin_Ratio":[Age_Bilirubin_Ratio]
+    })
 
-# -------------------------------
-# Model comparison
-# -------------------------------
-rf_acc = accuracy_score(y_test, rf_model.predict(X_test))
-gb_acc = accuracy_score(y_test, gb_model.predict(X_test))
-rf_auc = auc(*roc_curve(y_test, rf_model.predict_proba(X_test)[:,1])[:2])
-gb_auc = auc(*roc_curve(y_test, gb_model.predict_proba(X_test)[:,1])[:2])
+input_df = user_input()
 
-st.markdown("### Model Comparison")
-st.write(f"**Random Forest → Accuracy:** {rf_acc:.2f}, **AUC:** {rf_auc:.2f}")
-st.write(f"**Gradient Boosting → Accuracy:** {gb_acc:.2f}, **AUC:** {gb_auc:.2f}")
+# ------------------ Predictions ------------------
+rf_pred = rf_model.predict(input_df)[0]
+gb_pred = gb_model.predict(input_df)[0]
+rf_prob = rf_model.predict_proba(input_df)[0][1] * 100
+gb_prob = gb_model.predict_proba(input_df)[0][1] * 100
 
-# -------------------------------
-# Evaluation Metrics – Random Forest
-# -------------------------------
-st.markdown("### 📊 Evaluation Metrics – Random Forest")
-y_pred = rf_model.predict(X_test)
-y_prob = rf_model.predict_proba(X_test)[:,1]
-st.write("**Accuracy:**", accuracy_score(y_test, y_pred))
-st.text(classification_report(y_test, y_pred))
-
-# Side-by-side plots
+# ------------------ Display Predictions ------------------
+st.subheader("Prediction")
 col1, col2 = st.columns(2)
 
-# Confusion Matrix
 with col1:
-    fig, ax = plt.subplots(figsize=(5,4))
-    sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt='d', cmap='Blues', ax=ax)
-    ax.set_title("Confusion Matrix")
-    st.pyplot(fig)
+    st.markdown(
+        f"<div style='padding:15px; background-color: {'#e74c3c' if rf_pred==1 else '#2ecc71'}; color:white; font-size:20px; text-align:center;'>"
+        f"Random Forest:<br>{'At Risk' if rf_pred==1 else 'Healthy'}<br>{rf_prob:.1f}% probability</div>",
+        unsafe_allow_html=True
+    )
 
-# ROC Curve
 with col2:
-    fpr, tpr, _ = roc_curve(y_test, y_prob)
-    roc_auc = auc(fpr, tpr)
-    fig2, ax2 = plt.subplots(figsize=(5,4))
-    ax2.plot(fpr, tpr, label=f"AUC = {roc_auc:.2f}")
-    ax2.plot([0,1],[0,1],'r--')
-    ax2.set_xlabel("False Positive Rate")
-    ax2.set_ylabel("True Positive Rate")
-    ax2.set_title("ROC Curve")
-    ax2.legend()
-    st.pyplot(fig2)
+    st.markdown(
+        f"<div style='padding:15px; background-color: {'#e74c3c' if gb_pred==1 else '#2ecc71'}; color:white; font-size:20px; text-align:center;'>"
+        f"Gradient Boosting:<br>{'At Risk' if gb_pred==1 else 'Healthy'}<br>{gb_prob:.1f}% probability</div>",
+        unsafe_allow_html=True
+    )
 
-# Feature Importance
-st.markdown("### 📝 Feature Importance")
-feat_imp = rf_model.feature_importances_
-fig3, ax3 = plt.subplots(figsize=(8,4))
-sns.barplot(x=feat_imp, y=X_test.columns, ax=ax3)
-ax3.set_title("Random Forest Feature Importance")
-st.pyplot(fig3)
+# ------------------ Feature Importance ------------------
+st.subheader("Feature Importance (Random Forest)")
+feat_imp = pd.Series(rf_model.feature_importances_, index=input_df.columns)
+fig, ax = plt.subplots(figsize=(7,5))
+sns.barplot(x=feat_imp.values, y=feat_imp.index, ax=ax, palette="viridis")
+ax.set_xlabel("Importance", fontsize=12)
+ax.set_ylabel("Feature", fontsize=12)
+ax.tick_params(labelsize=10)
+st.pyplot(fig)
 
-# -------------------------------
-# Interactive Prediction
-# -------------------------------
-st.markdown("### 🖥 Predict Your Own Sample")
-user_input = {}
-for col in X.columns:
-    user_input[col] = st.number_input(col, float(X[col].min()), float(X[col].max()), float(X[col].mean()))
-
-model_choice = st.radio("Select Model for Prediction", ["Random Forest", "Gradient Boosting"])
-if st.button("Predict"):
-    input_df = pd.DataFrame([user_input])
-    selected_model = rf_model if model_choice=="Random Forest" else gb_model
-    pred = selected_model.predict(input_df)[0]
-    proba = selected_model.predict_proba(input_df)[0][pred]
-    label = "Liver Disease" if pred==1 else "Healthy"
-    st.success(f"Prediction using {model_choice}: **{label}** (Confidence: {proba:.2f})")
+# ------------------ Footer ------------------
+st.markdown("---")
+st.markdown(
+    "<p style='font-size:16px;'>💡 This interactive app demonstrates how <b>machine learning can turn complex health data into actionable insights</b> in a clean, user-friendly interface.</p>",
+    unsafe_allow_html=True
+)  
